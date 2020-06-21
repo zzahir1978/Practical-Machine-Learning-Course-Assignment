@@ -1,0 +1,197 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Zahiruddin Zahidanishah"
+date: "06/20/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+### Background
+
+Using smart devices such as *Jawbone Up, Nike FuelBand,* and *Fitbit* it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+This report will used data from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+More information is available from the following website: <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+### Data
+
+The training data for this project are available on the following link:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available on the following link:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+The data for this project come from this source: <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har>. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+### Human Activity Recognition
+
+*Human Activity Recognition* (HAR) has emerged as a key research area in the last years and is gaining increasing attention by the pervasive computing research community, especially for the development of context-aware systems. There are many potential applications for HAR, such as elderly monitoring, life log systems for monitoring energy expenditure and for supporting weight-loss programs, and digital assistants for weight lifting exercises.
+
+Based on the authors website, the description of the data set contents are as detail below:-
+
+1. Class A - Throwing the elbows to the front
+
+2. Class B - Lifting the dumbbell only halfway
+
+3. Class C - Lowering the dumbbell only halfway
+
+4. Class D - Throwing the hips to the front
+
+### Setting up
+
+The following r packages shall be loaded for the purposes of this report:-
+
+1. knitr
+
+2. caret
+
+3. rpart
+
+4. rpart.plot
+
+5. rattle
+
+6. randomForest
+
+7. corrplot
+
+``` {r, echo=FALSE}
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(corrplot)
+set.seed(12345)
+```
+
+As given in the assignment, the following data set is loaded in r for the purposes of this report including the training and test set:-
+
+``` {r, echo=TRUE}
+UrlTrain <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+UrlTest  <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(UrlTrain))
+testing  <- read.csv(url(UrlTest))
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+TrainSet <- training[inTrain, ]
+TestSet  <- training[-inTrain, ]
+```
+
+Based on the training and test sets, shows that both consists of 160 variable (column). 
+
+``` {r, echo=TRUE}
+dim(TrainSet)
+dim(TestSet)
+```
+
+### Data cleaning process
+
+The data set consist of unnecessary items such as zero values and NA. This items need to be removed before continue with the analysis works.
+
+``` {r, echo=TRUE}
+NZV <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZV]
+TestSet  <- TestSet[, -NZV]
+AllNA    <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.95
+TrainSet <- TrainSet[, AllNA==FALSE]
+TestSet  <- TestSet[, AllNA==FALSE]
+TrainSet <- TrainSet[, -(1:5)]
+TestSet  <- TestSet[, -(1:5)]
+dim(TrainSet)
+dim(TestSet)
+```
+
+## Cross Validation
+
+To carry out the cross validation on the data set variable, a corrplot package is used in order to get a graphical dispaly of the correlation matrix, confidence interval of the data set.
+
+``` {r, echo=TRUE}
+corMatrix <- cor(TrainSet[, -54])
+corrplot(corMatrix, order = "FPC", method = "circle", type = "full", tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+```
+
+From the above plot shows that the highly correlated variables as shown in the dark colors.
+
+## Model Prediction
+
+In order to identify the pattern between sample in training set, three methods are selected to carry out to find out the suitable modeling methods.
+
+### 1.0 Random Forest Method
+
+Based on the *Random Forest Method* modeling, shows that the error rate is **0.23%** and the accuracy is **99.9%**. The details are shows below.
+
+``` {r, echo=TRUE}
+set.seed(12345)
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modFitRandForest <- train(classe ~ ., data=TrainSet, method="rf", trControl=controlRF)
+modFitRandForest$finalModel
+```
+
+``` {r, echo=TRUE}
+predictRandForest <- predict(modFitRandForest, newdata=TestSet)
+confMatRandForest <- confusionMatrix(predictRandForest, as.factor(TestSet$classe))
+confMatRandForest
+```
+
+### 2.0 Predicting with decision trees
+
+Based on the *Decision Trees Method* modeling, shows that the accuracy is **73.4%**. The details are shows below.
+
+``` {r, echo=TRUE}
+set.seed(12345)
+modFitDecTree <- rpart(classe ~ ., data=TrainSet, method="class")
+fancyRpartPlot(modFitDecTree)
+```
+
+``` {r, echo=TRUE}
+predictDecTree <- predict(modFitDecTree, newdata=TestSet, type="class")
+confMatDecTree <- confusionMatrix(predictDecTree, as.factor(TestSet$classe))
+confMatDecTree
+```
+
+### 3.0 Generalized Boosted Model
+
+Based on the *Generalizied Boosted Method* modeling, shows that the accuracy is **98.7%**. The details are shows below.
+
+``` {r, echo=TRUE}
+set.seed(12345)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modFitGBM  <- train(classe ~ ., data=TrainSet, method = "gbm", trControl = controlGBM, verbose = FALSE)
+modFitGBM$finalModel
+```
+
+``` {r, echo=TRUE}
+predictGBM <- predict(modFitGBM, newdata=TestSet)
+confMatGBM <- confusionMatrix(predictGBM, as.factor(TestSet$classe))
+confMatGBM
+```
+
+## Model Prediction
+
+Based on the prediction modeling shows that **Random Forest Method** shows the highest accuracy equal to **99.9%** while the **Decision Tree Method** has the lowest accuracy equal to **73.4%**.
+
+Therefore, based on the Random Forest Method prediction model, the predict model for the 20 cases are summarized below:-
+
+1. Class A - 7 cases
+
+2. Class B - 8 cases
+
+3. Class C - 1 case
+
+4. Class D - 1 case
+
+5. Class E - 3 cases
+
+``` {r, echo=TRUE}
+predictTEST <- predict(modFitRandForest, newdata=testing)
+predictTEST
+```
